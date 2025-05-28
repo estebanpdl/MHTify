@@ -307,9 +307,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Replace = followed by a newline with nothing
         str = str.replace(/=[\r\n]+/g, '');
         // Replace =XX with the corresponding character
-        return str.replace(/=([0-9A-F]{2})/gi, (match, p1) => {
-            return String.fromCharCode(parseInt(p1, 16));
-        });
+        return decodeURIComponent(escape(
+	    str.replace(/=([0-9A-F]{2})/gi, (match, p1) => {
+                return String.fromCharCode(parseInt(p1, 16));
+        })));
     }
 
     function escapeRegExp(string) {
