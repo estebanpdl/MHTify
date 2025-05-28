@@ -341,153 +341,241 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show loading indicator
         showLoading();
         
+        console.log('Starting PDF conversion...');
+        
         try {
-            // Create a new hidden div to render the content
-            const container = document.createElement('div');
-            container.style.position = 'absolute';
-            container.style.left = '-9999px';
-            container.style.top = 0;
-            container.style.width = '1200px'; // Increased width to avoid content cutoff
-            document.body.appendChild(container);
+            // Create a temporary iframe for rendering
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'absolute';
+            iframe.style.left = '-9999px';
+            iframe.style.top = '0';
+            iframe.style.width = '1200px';
+            iframe.style.height = '800px';
+            iframe.style.border = 'none';
+            document.body.appendChild(iframe);
             
-            // Insert the HTML content - add a wrapper to help with centering
-            container.innerHTML = `
-                <div style="margin: 0 auto; width: 100%; padding: 20px;">
-                    ${convertedHTML}
-                </div>
-            `;
+            console.log('Created iframe for PDF rendering');
             
-            // Add CSS to ensure proper rendering for PDF
-            const style = document.createElement('style');
-            style.textContent = `
-                body {
-                    margin: 0;
-                    padding: 0;
-                    font-family: Arial, sans-serif;
-                }
-                img, table, iframe, video, object {
-                    max-width: 100%;
-                    height: auto;
-                }
-                * {
-                    -webkit-print-color-adjust: exact !important;
-                    color-adjust: exact !important;
-                }
-                /* Additional centering styles */
-                body > div {
-                    display: block;
-                    margin: 0 auto;
-                    text-align: left;
-                }
-                /* Make sure text doesn't get cut off */
-                p, div, span, h1, h2, h3, h4, h5, h6 {
-                    max-width: 100%;
-                    overflow-wrap: break-word;
-                    word-wrap: break-word;
-                }
-            `;
-            
-            // Add the style to the container
-            container.appendChild(style);
-            
-            // Get the filename for the PDF
-            const pdfFilename = currentFile.name.replace(/\.mht(ml)?$/i, '.pdf');
-            
-            // Give the browser some time to render the content
-            setTimeout(() => {
-                // Find the actual content width to prevent cutoff
-                const contentElements = container.querySelectorAll('*');
-                let maxWidth = 800; // Default minimum width
-                
-                contentElements.forEach(el => {
-                    if (el.offsetWidth > maxWidth) {
-                        maxWidth = el.offsetWidth;
-                    }
-                });
-                
-                // Ensure we have adequate width
-                container.style.width = (maxWidth + 50) + 'px';
-                
-                // Render the content to a canvas
-                html2canvas(container, {
-                    allowTaint: true,
-                    useCORS: true,
-                    scale: 1.5,
-                    logging: false,
-                    width: container.offsetWidth,
-                    height: container.offsetHeight,
-                    x: 0,
-                    y: 0,
-                    onclone: (clonedDoc) => {
-                        // Force all images to load
-                        const images = clonedDoc.querySelectorAll('img');
-                        images.forEach(img => {
-                            if (img.complete) return;
-                            img.src = img.src;
-                        });
-                    }
-                }).then(canvas => {
-                    try {
-                        // Initialize PDF document
-                        const pdfWidth = 210; // A4 width in mm
-                        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                        
-                        // Create PDF - adjust orientation based on content
-                        const { jsPDF } = window.jspdf;
-                        const pdf = new jsPDF({
-                            orientation: pdfHeight > pdfWidth ? 'portrait' : 'landscape',
-                            unit: 'mm',
-                            format: 'a4'
-                        });
-                        
-                        // Add some margins
-                        const margin = 10; // 10mm margin
-                        const contentWidth = pdfWidth - (margin * 2);
-                        const contentHeight = (contentWidth * canvas.height) / canvas.width;
-                        
-                        // Convert canvas to image
-                        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-                        
-                        // Add the first page - centered with margins
-                        pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight);
-                        
-                        // Calculate how many pages we need
-                        const a4Height = 297 - (margin * 2); // A4 height minus margins
-                        if (contentHeight > a4Height) {
-                            const totalPages = Math.ceil(contentHeight / a4Height);
-                            
-                            for (let i = 1; i < totalPages; i++) {
-                                pdf.addPage();
-                                // Adjust position to show the correct portion of the image on each page
-                                pdf.addImage(
-                                    imgData, 'JPEG', 
-                                    margin, margin - (i * a4Height), // Position to show correct part
-                                    contentWidth, contentHeight
-                                );
-                            }
+            // Prepare the HTML content with proper styling for PDF
+            const pdfHTML = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body {
+                            margin: 0;
+                            padding: 20px;
+                            font-family: Arial, sans-serif;
+                            background: white !important;
+                            color: black !important;
+                            line-height: 1.4;
+                            width: 1160px; /* Fixed width for consistent rendering */
                         }
                         
-                        // Save the PDF
-                        pdf.save(pdfFilename);
+                        /* Ensure all content is visible */
+                        * {
+                            -webkit-print-color-adjust: exact !important;
+                            color-adjust: exact !important;
+                            box-sizing: border-box;
+                        }
+                        
+                        /* Fix common layout issues */
+                        img, table, iframe, video, object {
+                            max-width: 100% !important;
+                            height: auto !important;
+                        }
+                        
+                        /* Ensure text doesn't get cut off */
+                        p, div, span, h1, h2, h3, h4, h5, h6 {
+                            max-width: 100%;
+                            overflow-wrap: break-word;
+                            word-wrap: break-word;
+                            color: black !important;
+                        }
+                        
+                        /* Remove any problematic positioning */
+                        * {
+                            position: static !important;
+                        }
+                        
+                        /* Ensure backgrounds are visible */
+                        body, div, p, span {
+                            background-color: white !important;
+                        }
+                        
+                        /* Make sure text is black */
+                        body, p, div, span, h1, h2, h3, h4, h5, h6 {
+                            color: black !important;
+                        }
+                        
+                        /* Remove any overflow hidden that might hide content */
+                        * {
+                            overflow: visible !important;
+                        }
+                        
+                        /* Force visibility */
+                        * {
+                            visibility: visible !important;
+                            opacity: 1 !important;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${convertedHTML}
+                </body>
+                </html>
+            `;
+            
+            console.log('Prepared HTML content for PDF');
+            
+            // Write content to iframe
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(pdfHTML);
+            iframeDoc.close();
+            
+            console.log('Written content to iframe');
+            
+            // Wait for content to load
+            iframe.onload = () => {
+                console.log('Iframe loaded, waiting for content to render...');
+                setTimeout(() => {
+                    try {
+                        const body = iframeDoc.body;
+                        
+                        console.log('Body element:', body);
+                        console.log('Body innerHTML length:', body ? body.innerHTML.length : 0);
+                        
+                        // Ensure the body has content
+                        if (!body || body.innerHTML.trim() === '') {
+                            throw new Error('No content found to convert to PDF');
+                        }
+                        
+                        // Force all images to load before capturing
+                        const images = body.querySelectorAll('img');
+                        console.log('Found', images.length, 'images to load');
+                        
+                        const imagePromises = Array.from(images).map(img => {
+                            return new Promise((resolve) => {
+                                if (img.complete && img.naturalHeight !== 0) {
+                                    resolve();
+                                } else {
+                                    img.onload = () => resolve();
+                                    img.onerror = () => resolve(); // Continue even if image fails
+                                    // Trigger reload if needed
+                                    const src = img.src;
+                                    img.src = '';
+                                    img.src = src;
+                                }
+                            });
+                        });
+                        
+                        Promise.all(imagePromises).then(() => {
+                            console.log('All images loaded, starting canvas capture...');
+                            // Give a bit more time for layout to settle
+                            setTimeout(() => {
+                                console.log('Body dimensions:', body.scrollWidth, 'x', body.scrollHeight);
+                                
+                                // Use html2canvas to capture the content
+                                html2canvas(body, {
+                                    allowTaint: true,
+                                    useCORS: true,
+                                    scale: 1.5,
+                                    logging: true, // Enable logging for debugging
+                                    backgroundColor: '#ffffff',
+                                    width: body.scrollWidth,
+                                    height: body.scrollHeight,
+                                    foreignObjectRendering: true,
+                                    removeContainer: false
+                                }).then(canvas => {
+                                    console.log('Canvas created:', canvas.width, 'x', canvas.height);
+                                    
+                                    try {
+                                        // Remove the iframe
+                                        document.body.removeChild(iframe);
+                                        
+                                        // Verify canvas has content
+                                        if (canvas.width === 0 || canvas.height === 0) {
+                                            throw new Error('Canvas has no content - PDF generation failed');
+                                        }
+                                        
+                                        // Create PDF
+                                        const { jsPDF } = window.jspdf;
+                                        
+                                        if (!jsPDF) {
+                                            throw new Error('jsPDF library not loaded');
+                                        }
+                                        
+                                        console.log('Creating PDF...');
+                                        
+                                        // Calculate dimensions
+                                        const imgWidth = 210; // A4 width in mm
+                                        const pageHeight = 295; // A4 height in mm
+                                        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                                        let heightLeft = imgHeight;
+                                        
+                                        // Create PDF document
+                                        const pdf = new jsPDF('p', 'mm', 'a4');
+                                        let position = 0;
+                                        
+                                        // Convert canvas to image data
+                                        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                                        
+                                        console.log('Image data length:', imgData.length);
+                                        
+                                        // Verify image data
+                                        if (!imgData || imgData === 'data:,' || imgData.length < 100) {
+                                            throw new Error('Failed to generate image data from canvas');
+                                        }
+                                        
+                                        // Add first page
+                                        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                                        heightLeft -= pageHeight;
+                                        
+                                        // Add additional pages if needed
+                                        while (heightLeft >= 0) {
+                                            position = heightLeft - imgHeight;
+                                            pdf.addPage();
+                                            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                                            heightLeft -= pageHeight;
+                                        }
+                                        
+                                        // Get filename and save
+                                        const pdfFilename = currentFile.name.replace(/\.mht(ml)?$/i, '.pdf');
+                                        console.log('Saving PDF as:', pdfFilename);
+                                        pdf.save(pdfFilename);
+                                        
+                                        console.log('PDF saved successfully!');
+                                        
+                                    } catch (error) {
+                                        console.error('Error creating PDF:', error);
+                                        alert('Error creating PDF: ' + error.message);
+                                    } finally {
+                                        hideLoading();
+                                    }
+                                }).catch(error => {
+                                    console.error('Error generating canvas:', error);
+                                    alert('Error generating canvas: ' + error.message);
+                                    if (iframe.parentNode) {
+                                        document.body.removeChild(iframe);
+                                    }
+                                    hideLoading();
+                                });
+                            }, 500); // Additional delay for layout
+                        });
+                        
                     } catch (error) {
-                        console.error('Error creating PDF:', error);
-                        alert('Error creating PDF: ' + error.message);
-                    } finally {
-                        // Clean up
-                        if (container && container.parentNode) {
-                            document.body.removeChild(container);
+                        console.error('Error in PDF generation:', error);
+                        alert('Error in PDF generation: ' + error.message);
+                        if (iframe.parentNode) {
+                            document.body.removeChild(iframe);
                         }
                         hideLoading();
                     }
-                }).catch(error => {
-                    console.error('Error generating canvas:', error);
-                    alert('Error generating canvas: ' + error.message);
-                    if (container && container.parentNode) {
-                        document.body.removeChild(container);
-                    }
-                    hideLoading();
-                });
-            }, 1000); // Increased delay to ensure proper rendering
+                }, 2000); // Wait for content to fully load
+            };
+            
         } catch (error) {
             console.error('Error in PDF generation:', error);
             alert('Error in PDF generation: ' + error.message);
